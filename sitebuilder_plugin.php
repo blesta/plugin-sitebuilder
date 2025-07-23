@@ -35,6 +35,11 @@ class SitebuilderPlugin extends Plugin
     private $sitebuilder_moreConfig = null;
     private $apiCredentials = null;
     private $autoloadInited = false;
+    /**
+     * @var null
+     */
+    private $settings = null;
+
 
     /**
      * Site builder constructor.
@@ -82,7 +87,7 @@ class SitebuilderPlugin extends Plugin
     {
         $service_tabs = [];
         $module = $this->getModuleByService($service);
-        if ($module && $module->type_id == 1/* && in_array($module->class, $this->supported_modules)*/) {
+        if ($module && $module->type_id == 1 && in_array($module->class, $this->supported_modules)) {
             $service_tabs = [
                 'tabSitebuilder' => [
                     'name' => $this->sitebuilder_buildPluginName(),
@@ -109,11 +114,6 @@ class SitebuilderPlugin extends Plugin
 
         return $locale;
     }
-
-    /**
-     * @var null
-     */
-    private $settings = null;
 
     /**
      * @return array|null
@@ -169,7 +169,7 @@ class SitebuilderPlugin extends Plugin
     }
 
     /**
-     * Displays the custom tab defined for unblocking IPs
+     * Displays the custom tab defined for launching sitebuilder for the given domain
      *
      * @param stdClass $service An stdClass object representing the service
      * @param array $get Any GET parameters
@@ -215,22 +215,11 @@ class SitebuilderPlugin extends Plugin
     private function &sitebuilder_getApiCredentials()
     {
         if ($this->apiCredentials === null) {
-            $apiUrl = null;
-            $apiUsername = null;
-            $apiPassword = null;
+            $apiUrl = $this->sitebuilder_getSetting('apiUrl');
+            $apiUsername = $this->sitebuilder_getSetting('apiUsername');
+            $apiPassword = $this->sitebuilder_getSetting('apiPassword');
             $licenseHash = null;
             $userId = null;
-            if (!$apiUrl || !$apiUsername || !$apiPassword) {
-                $apiUrl = $this->sitebuilder_getSetting('apiUrl');
-                $apiUsername = $this->sitebuilder_getSetting('apiUsername');
-                $apiPassword = $this->sitebuilder_getSetting('apiPassword');
-            }
-            if (!$apiUrl || !$apiUsername || !$apiPassword) {
-                $apiUrl = 'https://site.pro/api/';
-                $apiUsername = 'apiuser8';
-                $apiPassword = 'MgAMiuS4O9MIjYzNGa6CFu96QoF381iK';
-                $licenseHash = 'spwXss1h5xIjYEh6BxiflIKaUwYpVXapo8stFQnu8p';
-            }
             $this->apiCredentials = (object) [
                 'apiUrl' => $apiUrl,
                 'apiUsername' => $apiUsername,
@@ -292,51 +281,14 @@ class SitebuilderPlugin extends Plugin
             $serverData = $this->sitebuilder_buildServerDataFromModule($module, $service, $outError);
 
             if ($ftpFormSubmitted) {
-                CredsUtil::store(
+                $this->sitebuilder_handleFtpFormSubmission(
                     $serviceDomain,
-                    (object) [
-                        'user' => $reqUser,
-                        'pass' => SecureUtil::encryptData($reqPass ?: ''),
-                        'host' => $reqHost,
-                        'path' => $reqPath,
-                    ]
+                    $reqUser,
+                    $reqPass,
+                    $reqHost,
+                    $reqPath,
+                    $productData
                 );
-
-                if (!$reqHost) {
-                    throw new SiteBuilderRequireFormException('FTP host/IP is required');
-                }
-                if (!$reqUser) {
-                    throw new SiteBuilderRequireFormException('FTP Username is required');
-                }
-                if (!$reqPass) {
-                    throw new SiteBuilderRequireFormException('FTP Password is required');
-                }
-                try {
-                    $this->sitebuilder_ftpActive($reqHost, $reqUser, $reqPass, $reqPath);
-                } catch (ErrorException $ex) {
-                    $err = $ex->getMessage();
-                    if ($err != 'could not connect') {
-                        // Do not consider FTP connection error as invalid FTP credentials, since
-                        // it can simply be firewall, blocking the FTP connection on Blesta server,
-                        // what is not critical.
-                        throw new SiteBuilderRequireFormException("FTP incorrect: {$err}");
-                    }
-                }
-                try {
-                    $this->sitebuilder_tryToOpenBuilder(
-                        $serviceDomain,
-                        $reqHost,
-                        $reqUser,
-                        $reqPass,
-                        $reqPath,
-                        null,
-                        $productData,
-                        null,
-                        'ftp-form'
-                    );
-                } catch (ErrorException $ex) {
-                    throw new SiteBuilderFatalException("Failed opening builder: {$ex->getMessage()}");
-                }
             } elseif (($customFtpCreds = $this->sitebuilder_getCustomFtpCreds($serviceDomain))) {
                 try {
                     $this->sitebuilder_tryToOpenBuilder(
@@ -354,86 +306,16 @@ class SitebuilderPlugin extends Plugin
                     throw new SiteBuilderFatalException("Failed opening builder: {$ex->getMessage()}");
                 }
             } else {
-                if (!$moduleClass) {
-                    throw new SiteBuilderFatalException("Service module '$moduleId' class unknown");
-                }
-                if (!$hostingData) {
-                    throw new ErrorException('Failed building hosting data' . ($outError ? ": {$outError}" : ''));
-                }
-                if (!$serverData) {
-                    throw new ErrorException('Failed building server data' . ($outError ? ": {$outError}" : ''));
-                }
-                $panel = Panel::build($moduleClass);
-                if (!$panel) {
-                    throw new ErrorException("Panel by module class '{$moduleClass}' not found");
-                }
-                if (($panel instanceof DirectAdminNew) && $serverData->username != 'admin') {
-                    throw new SiteBuilderFatalException("DirectAdmin server must have user 'admin'");
-                }
-                $clientEmail = null;
-                if (($clientId = ($service->client_id ?? null))) {
-                    if (!isset($this->Clients)) {
-                        Loader::loadModels($this, ["Clients"]);
-                    }
-                    if (($client = $this->Clients->get($clientId)) && isset($client->email)) {
-                        $clientEmail = $client->email;
-                    }
-                }
-                $panel->identifyUser(
-                    $hostingData->username,
-                    $hostingData->password,
-                    $hostingData->domain,
-                    $this->sitebuilder_resolveHostingPlan($hostingData->domain, $productData),
-                    $clientEmail
+                $this->sitebuilder_handleAutomaticLaunch(
+                    $moduleClass,
+                    $moduleId,
+                    $hostingData,
+                    $serverData,
+                    $productData,
+                    $outError,
+                    $service,
+                    &$output
                 );
-                $panel->identifyServer(
-                    $serverData->resolveHost(true),
-                    $serverData->username,
-                    $serverData->password,
-                    $serverData->accesshash,
-                    $serverData->ip,
-                    null,
-                    $serverData->secure
-                );
-                $panel->identifyBuilder(
-                    $this->sitebuilder_resolveBuilderApiUrl($serverData->host),
-                    $this->sitebuilder_getApiCredentials()->apiUsername,
-                    $this->sitebuilder_getApiCredentials()->apiPassword,
-                    $this->sitebuilder_getApiCredentials()->userId,
-                    $this->sitebuilder_getApiCredentials()->licenseHash,
-                    $this->sitebuilder_getCustomConfig('builderPublicKey'),
-                    'Blesta',
-                    $this->sitebuilder_getCreateFromHash($service->id),
-                    $this->getCurrentLanguage(true),
-                    $this->getVersion(),
-                );
-                $panel->identifyProduct(
-                    $productData->name
-                );
-                if (($panel instanceof CWP) || ($panel instanceof CPanelNew)) {
-                    $panel->overwriteTranslations([
-                        'SiteBuilder_Domain' => Language::_('SitebuilderPlugin.cPanelNew.Domain', true),
-                        'SiteBuilder_DocRoot' => Language::_('SitebuilderPlugin.cPanelNew.DocRoot', true),
-                        'SiteBuilder_SelectDomain' => '',
-                        'SiteBuilder_ChooseDomainDesc' => Language::_('SitebuilderPlugin.SelectDomain', true),
-                    ]);
-                }
-                if ($panel instanceof CWP) {
-                    $panel->setApiToken($this->sitebuilder_getSetting('cwpApiToken'));
-                } elseif ($panel instanceof DirectAdminNew) {
-                    $panel->overwriteTranslations([
-                        'Choose domain/subdomain:' => Language::_('SitebuilderPlugin.SelectDomain', true),
-                    ]);
-                }
-                try {
-                    $output = $panel->process();
-                } catch (ErrorException $ex) {
-                    if ($ex->getCode() == 2000) {
-                        throw new SiteBuilderRequireFormException($ex->getMessage());
-                    } else {
-                        throw new SiteBuilderFatalException($ex->getMessage());
-                    }
-                }
             }
         } catch (ErrorException $ex) {
             $error = $ex->getMessage();
@@ -455,6 +337,7 @@ class SitebuilderPlugin extends Plugin
             }
         }
 
+        // Construct ftp form if necessary
         if ($showFtpForm && !$isFatalError) {
             if ($ftpFormSubmitted) {
                 $ftpFormHost = $reqHost;
@@ -534,6 +417,153 @@ class SitebuilderPlugin extends Plugin
                 'path' => $ftpFormPath ?? '',
             ] : null,
         ];
+    }
+
+    private function sitebuilder_handleFtpFormSubmission(
+        $serviceDomain,
+        $reqUser,
+        $reqPass,
+        $reqHost,
+        $reqPath,
+        $productData
+    ) {
+            CredsUtil::store(
+                $serviceDomain,
+                (object) [
+                    'user' => $reqUser,
+                    'pass' => SecureUtil::encryptData($reqPass ?: ''),
+                    'host' => $reqHost,
+                    'path' => $reqPath,
+                ]
+            );
+
+            if (!$reqHost) {
+                throw new SiteBuilderRequireFormException('FTP host/IP is required');
+            }
+            if (!$reqUser) {
+                throw new SiteBuilderRequireFormException('FTP Username is required');
+            }
+            if (!$reqPass) {
+                throw new SiteBuilderRequireFormException('FTP Password is required');
+            }
+            try {
+                $this->sitebuilder_ftpActive($reqHost, $reqUser, $reqPass, $reqPath);
+            } catch (ErrorException $ex) {
+                $err = $ex->getMessage();
+                if ($err != 'could not connect') {
+                    // Do not consider FTP connection error as invalid FTP credentials, since
+                    // it can simply be firewall, blocking the FTP connection on Blesta server,
+                    // what is not critical.
+                    throw new SiteBuilderRequireFormException("FTP incorrect: {$err}");
+                }
+            }
+            try {
+                $this->sitebuilder_tryToOpenBuilder(
+                    $serviceDomain,
+                    $reqHost,
+                    $reqUser,
+                    $reqPass,
+                    $reqPath,
+                    null,
+                    $productData,
+                    null,
+                    'ftp-form'
+                );
+            } catch (ErrorException $ex) {
+                throw new SiteBuilderFatalException("Failed opening builder: {$ex->getMessage()}");
+            }
+    }
+
+    private function sitebuilder_handleAutomaticLaunch(
+        $moduleClass,
+        $moduleId,
+        $hostingData,
+        $serverData,
+        $productData,
+        $outError,
+        $service,
+        &$output
+    ) {
+        if (!$moduleClass) {
+            throw new SiteBuilderFatalException("Service module '$moduleId' class unknown");
+        }
+        if (!$hostingData) {
+            throw new ErrorException('Failed building hosting data' . ($outError ? ": {$outError}" : ''));
+        }
+        if (!$serverData) {
+            throw new ErrorException('Failed building server data' . ($outError ? ": {$outError}" : ''));
+        }
+        $panel = Panel::build($moduleClass);
+        if (!$panel) {
+            throw new ErrorException("Panel by module class '{$moduleClass}' not found");
+        }
+        if (($panel instanceof DirectAdminNew) && $serverData->username != 'admin') {
+            throw new SiteBuilderFatalException("DirectAdmin server must have user 'admin'");
+        }
+        $clientEmail = null;
+        if (($clientId = ($service->client_id ?? null))) {
+            if (!isset($this->Clients)) {
+                Loader::loadModels($this, ["Clients"]);
+            }
+            if (($client = $this->Clients->get($clientId)) && isset($client->email)) {
+                $clientEmail = $client->email;
+            }
+        }
+        $panel->identifyUser(
+            $hostingData->username,
+            $hostingData->password,
+            $hostingData->domain,
+            $this->sitebuilder_resolveHostingPlan($hostingData->domain, $productData),
+            $clientEmail
+        );
+        $panel->identifyServer(
+            $serverData->resolveHost(true),
+            $serverData->username,
+            $serverData->password,
+            $serverData->accesshash,
+            $serverData->ip,
+            null,
+            $serverData->secure
+        );
+        $panel->identifyBuilder(
+            $this->sitebuilder_resolveBuilderApiUrl($serverData->host),
+            $this->sitebuilder_getApiCredentials()->apiUsername,
+            $this->sitebuilder_getApiCredentials()->apiPassword,
+            $this->sitebuilder_getApiCredentials()->userId,
+            $this->sitebuilder_getApiCredentials()->licenseHash,
+            $this->sitebuilder_getCustomConfig('builderPublicKey'),
+            'Blesta',
+            $this->sitebuilder_getCreateFromHash($service->id),
+            $this->getCurrentLanguage(true),
+            $this->getVersion(),
+        );
+        $panel->identifyProduct(
+            $productData->name
+        );
+        if (($panel instanceof CWP) || ($panel instanceof CPanelNew)) {
+            $panel->overwriteTranslations([
+                'SiteBuilder_Domain' => Language::_('SitebuilderPlugin.cPanelNew.Domain', true),
+                'SiteBuilder_DocRoot' => Language::_('SitebuilderPlugin.cPanelNew.DocRoot', true),
+                'SiteBuilder_SelectDomain' => '',
+                'SiteBuilder_ChooseDomainDesc' => Language::_('SitebuilderPlugin.SelectDomain', true),
+            ]);
+        }
+        if ($panel instanceof CWP) {
+            $panel->setApiToken($this->sitebuilder_getSetting('cwpApiToken'));
+        } elseif ($panel instanceof DirectAdminNew) {
+            $panel->overwriteTranslations([
+                'Choose domain/subdomain:' => Language::_('SitebuilderPlugin.SelectDomain', true),
+            ]);
+        }
+        try {
+            $output = $panel->process();
+        } catch (ErrorException $ex) {
+            if ($ex->getCode() == 2000) {
+                throw new SiteBuilderRequireFormException($ex->getMessage());
+            } else {
+                throw new SiteBuilderFatalException($ex->getMessage());
+            }
+        }
     }
 
     /**
@@ -624,101 +654,31 @@ class SitebuilderPlugin extends Plugin
             if (!$meta || !is_object($meta)) {
                 throw new Exception("module '{$class}' meta not found");
             }
-            $host = $ip = $port = $user = $pass = $key = null;
-            $secure = false;
-            switch ($class) {
-                case 'cpanel':
-                    if (isset($meta->host_name) && $meta->host_name) {
-                        $host = $meta->host_name;
-                    }
-                    if (isset($meta->user_name) && $meta->user_name) {
-                        $user = $meta->user_name;
-                    }
-                    if (isset($meta->key) && $meta->key) {
-                        $key = $meta->key;
-                    }
-                    if (isset($meta->use_ssl)) {
-                        $secure = ($meta->use_ssl == 'true');
-                    }
-                    break;
-                case 'plesk':
-                    if (isset($meta->host_name) && $meta->host_name) {
-                        $host = $meta->host_name;
-                    }
-                    if (isset($meta->ip_address) && $meta->ip_address) {
-                        $ip = $meta->ip_address;
-                    }
-                    if (isset($meta->port) && $meta->port) {
-                        $port = $meta->port;
-                    }
-                    if (isset($meta->username) && $meta->username) {
-                        $user = $meta->username;
-                    }
-                    if (isset($meta->password) && $meta->password) {
-                        $pass = $meta->password;
-                    }
-                    $secure = true;
-                    break;
-                case 'direct_admin':
-                    if (isset($meta->host_name) && $meta->host_name) {
-                        $host = $meta->host_name;
-                    }
-                    if (isset($meta->port) && $meta->port) {
-                        $port = $meta->port;
-                    }
-                    if (isset($meta->user_name) && $meta->user_name) {
-                        $user = $meta->user_name;
-                    }
-                    if (isset($meta->password) && $meta->password) {
-                        $pass = $meta->password;
-                    }
-                    if (isset($meta->use_ssl)) {
-                        $secure = ($meta->use_ssl == 'true');
-                    }
-                    break;
-                case 'centoswebpanel':
-                    if (isset($meta->host_name) && $meta->host_name) {
-                        $host = $meta->host_name;
-                    }
-                    if (isset($meta->port) && $meta->port) {
-                        $port = $meta->port;
-                    }
-                    if (isset($meta->api_key) && $meta->api_key) {
-                        $key = $meta->api_key;
-                    }
-                    if (isset($meta->use_ssl)) {
-                        $secure = ($meta->use_ssl == 'true');
-                    }
-                    break;
-                case 'interworx':
-                    if (isset($meta->host_name) && $meta->host_name) {
-                        $host = $meta->host_name;
-                    }
-                    if (isset($meta->port) && $meta->port) {
-                        $port = $meta->port;
-                    }
-                    if (isset($meta->key) && $meta->key) {
-                        $key = $meta->key;
-                    }
-                    if (isset($meta->use_ssl)) {
-                        $secure = ($meta->use_ssl == 'true');
-                    }
-                    break;
-                case 'ispmanager':
-                    if (isset($meta->host_name) && $meta->host_name) {
-                        $host = $meta->host_name;
-                    }
-                    if (isset($meta->user_name) && $meta->user_name) {
-                        $user = $meta->user_name;
-                    }
-                    if (isset($meta->password) && $meta->password) {
-                        $pass = $meta->password;
-                    }
-                    if (isset($meta->use_ssl)) {
-                        $secure = ($meta->use_ssl == 'true');
-                    }
-                    break;
+
+            // Get a list of fields to submit based on the module metadata
+            $params = array_fill_keys(['host', 'ip', 'port', 'user', 'pass', 'key'], null);
+            $secure = true;
+            $module_fields = [
+                'cpanel' => ['host' => 'host_name', 'user' => 'user_name', 'key' => 'key'],
+                'plesk' => ['host' => 'host_name', 'ip' => 'ip_address', 'port' => 'port', 'user' => 'username', 'pass' => 'password'],
+                'direct_admin' => ['host' => 'host_name', 'port' => 'port', 'user' => 'user_name', 'pass' => 'password'],
+                'centoswebpanel' => ['host' => 'host_name', 'port' => 'port', 'key' => 'api_key'],
+                'interworx' => ['host' => 'host_name', 'port' => 'port', 'key' => 'key'],
+                'ispmanager' => ['host' => 'host_name', 'user' => 'user_name', 'pass' => 'password'],
+            ];
+
+            foreach ($module_fields[$class] ?? [] as $param_field => $module_field) {
+                if (!empty($meta->{$module_field})) {
+                    $params[$param_field] = $meta->{$module_field};
+                }
             }
+
+            $ssl_modules = ['cpanel', 'direct_admn', 'centoswebpanel', 'interworx', 'ispmanager'];
+            if (in_array($class, $ssl_modules)) {
+                $secure = ($meta->use_ssl == 'true');
+            }
+            extract($params);
+
             if (!$ip && $host && preg_match('#^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$#', ($v = gethostbyname($host)))) {
                 $ip = $v;
             }
@@ -760,77 +720,19 @@ class SitebuilderPlugin extends Plugin
             if (!$fields) {
                 throw new Exception('fields not found');
             }
-            $domain = $user = $pass = null;
+
+            // Set hosting params based on service metadata
+            $params = array_fill_keys(['domain', 'user', 'pass']);
+            $field_mapping = [
+                'cpanel' => ['cpanel_domain' => 'domain', 'cpanel_username' => 'user', 'cpanel_password' => 'key'],
+                'cpanel' => ['cpanel_domain' => 'domain', 'cpanel_username' => 'user', 'cpanel_password' => 'key'],
+            ];
             foreach ($fields as $field) {
-                switch ($moduleClass) {
-                    case 'cpanel':
-                        if ($field->key == 'cpanel_domain') {
-                            $domain = $field->value;
-                        }
-                        if ($field->key == 'cpanel_username') {
-                            $user = $field->value;
-                        }
-                        if ($field->key == 'cpanel_password') {
-                            $pass = $field->value;
-                        }
-                        break;
-                    case 'plesk':
-                        if ($field->key == 'plesk_domain') {
-                            $domain = $field->value;
-                        }
-                        if ($field->key == 'plesk_username') {
-                            $user = $field->value;
-                        }
-                        if ($field->key == 'plesk_password') {
-                            $pass = $field->value;
-                        }
-                        break;
-                    case 'direct_admin':
-                        if ($field->key == 'direct_admin_domain') {
-                            $domain = $field->value;
-                        }
-                        if ($field->key == 'direct_admin_username') {
-                            $user = $field->value;
-                        }
-                        if ($field->key == 'direct_admin_password') {
-                            $pass = $field->value;
-                        }
-                        break;
-                    case 'centoswebpanel':
-                        if ($field->key == 'centoswebpanel_domain') {
-                            $domain = $field->value;
-                        }
-                        if ($field->key == 'centoswebpanel_username') {
-                            $user = $field->value;
-                        }
-                        if ($field->key == 'centoswebpanel_password') {
-                            $pass = $field->value;
-                        }
-                        break;
-                    case 'interworx':
-                        if ($field->key == 'interworx_domain') {
-                            $domain = $field->value;
-                        }
-                        if ($field->key == 'interworx_username') {
-                            $user = $field->value;
-                        }
-                        if ($field->key == 'interworx_password') {
-                            $pass = $field->value;
-                        }
-                        break;
-                    case 'ispmanager':
-                        if ($field->key == 'ispmanager_domain') {
-                            $domain = $field->value;
-                        }
-                        if ($field->key == 'ispmanager_username') {
-                            $user = $field->value;
-                        }
-                        if ($field->key == 'ispmanager_password') {
-                            $pass = $field->value;
-                        }
-                        break;
+                if (isset($field_mapping[$moduleClass][$field->key])) {
+                    $params[$field_mapping[$moduleClass][$field->key]] = $field->value;
                 }
             }
+            extract($params);
 
             return new HostingData($domain, $user, $pass);
         } catch (Exception $ex) {
