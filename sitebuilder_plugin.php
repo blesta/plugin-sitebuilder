@@ -314,7 +314,7 @@ class SitebuilderPlugin extends Plugin
                     $productData,
                     $outError,
                     $service,
-                    &$output
+                    $output
                 );
             }
         } catch (ErrorException $ex) {
