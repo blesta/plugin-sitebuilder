@@ -220,6 +220,12 @@ class SitebuilderPlugin extends Plugin
             $apiPassword = $this->sitebuilder_getSetting('apiPassword');
             $licenseHash = null;
             $userId = null;
+            if (!$apiUrl || !$apiUsername || !$apiPassword) {
+                $apiUrl = 'https://site.pro/api/';
+                $apiUsername = 'apiuser8';
+                $apiPassword = 'MgAMiuS4O9MIjYzNGa6CFu96QoF381iK';
+                $licenseHash = 'spwXss1h5xIjYEh6BxiflIKaUwYpVXapo8stFQnu8p';
+            }
             $this->apiCredentials = (object) [
                 'apiUrl' => $apiUrl,
                 'apiUsername' => $apiUsername,
