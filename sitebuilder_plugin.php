@@ -722,10 +722,14 @@ class SitebuilderPlugin extends Plugin
             }
 
             // Set hosting params based on service metadata
-            $params = array_fill_keys(['domain', 'user', 'pass']);
+            $params = array_fill_keys(['domain', 'user', 'pass'], null);
             $field_mapping = [
-                'cpanel' => ['cpanel_domain' => 'domain', 'cpanel_username' => 'user', 'cpanel_password' => 'key'],
-                'cpanel' => ['cpanel_domain' => 'domain', 'cpanel_username' => 'user', 'cpanel_password' => 'key'],
+                'cpanel' => ['cpanel_domain' => 'domain', 'cpanel_username' => 'user', 'cpanel_password' => 'pass'],
+                'plesk' => ['plesk_domain' => 'host_name', 'plesk_username' => 'user', 'plesk_password' => 'pass'],
+                'direct_admin' => ['direct_admin_domain' => 'host_name', 'direct_admin_username' => 'user', 'direct_admin_password' => 'pass'],
+                'centoswebpanel' => ['centoswebpanel_domain' => 'host_name', 'centoswebpanel_username' => 'user', 'centoswebpanel_password' => 'pass'],
+                'interworx' => ['interworx_domain' => 'host_name', 'interworx_username' => 'user', 'interworx_password' => 'pass'],
+                'ispmanager' => ['ispmanager_domain' => 'host_name', 'ispmanager_username' => 'user', 'ispmanager_password' => 'pass'],
             ];
             foreach ($fields as $field) {
                 if (isset($field_mapping[$moduleClass][$field->key])) {
