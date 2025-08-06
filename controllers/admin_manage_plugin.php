@@ -15,6 +15,9 @@ class AdminManagePlugin extends AppController
 
         Language::loadLang('sitebuilder_manage_plugin', null, PLUGINDIR . 'sitebuilder' . DS . 'language' . DS);
 
+        // Load plugin configuration files
+        Configure::load('sitebuilder', PLUGINDIR . 'sitebuilder' . DS . 'config' . DS);
+
         $this->plugin_id = $this->get[0] ?? null;
 
         // Set the page title
@@ -51,12 +54,15 @@ class AdminManagePlugin extends AppController
         return [
             'apiUrl' => (object) [
                 'type' => 'text',
+                'default' => Configure::get('Sitebuilder.api_credentials.url')
             ],
             'apiUsername' => (object) [
                 'type' => 'text',
+                'default' => Configure::get('Sitebuilder.api_credentials.username')
             ],
             'apiPassword' => (object) [
                 'type' => 'text',
+                'default' => Configure::get('Sitebuilder.api_credentials.password')
             ],
             'buttonName' => (object) [
                 'type' => 'text',
@@ -83,9 +89,6 @@ class AdminManagePlugin extends AppController
      */
     public function index()
     {
-        error_reporting(E_ALL);
-        ini_set('display_errors', true);
-
         $this->init();
 
         if (!isset($this->Companies)) {
@@ -98,7 +101,7 @@ class AdminManagePlugin extends AppController
         $values = [];
         foreach ($pluginVars as $id => $pluginVar) {
             $setting = $this->Companies->getSetting(Configure::get('Blesta.company_id'), "sitebuilder_{$id}");
-            $values[$id] = $setting ? $setting->value : $this->getConfigVarDefault($id);
+            $values[$id] = !empty($setting->value) ? $setting->value : $this->getConfigVarDefault($id);
         }
         $vars['values'] = $values;
 
