@@ -15,5 +15,5 @@ $lang['SitebuilderManagePlugin.index.cwpApiToken_prompt'] = 'Required if you use
 $lang['SitebuilderManagePlugin.index.submit_settings'] = 'Save';
 $lang['SitebuilderManagePlugin.index.required'] = 'required';
 
-$lang['SitebuilderManagePlugin.index.instruction'] = 'To get your Site.pro API credentials, use %sthis instruction%s.';
+$lang['SitebuilderManagePlugin.index.instruction'] = 'To get your Site.pro API credentials, use %sthese instructions%s.';
 $lang['SitebuilderManagePlugin.index.instructionUrl'] = 'https://site.pro/Blesta/#documentation';

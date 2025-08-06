@@ -50,6 +50,9 @@ class SitebuilderPlugin extends Plugin
         Loader::loadComponents($this, ['Input', 'Record']);
 
         Language::loadLang('sitebuilder_plugin', null, dirname(__FILE__) . DS . 'language' . DS);
+
+        // Load plugin configuration files
+        Configure::load('sitebuilder', dirname(__FILE__) . DS . 'config' . DS);
         $this->loadConfig(dirname(__FILE__) . DS . 'config.json');
 
         $this->sitebuilder_initAutoload();
@@ -221,10 +224,10 @@ class SitebuilderPlugin extends Plugin
             $licenseHash = null;
             $userId = null;
             if (!$apiUrl || !$apiUsername || !$apiPassword) {
-                $apiUrl = 'https://site.pro/api/';
-                $apiUsername = 'apiuser8';
-                $apiPassword = 'MgAMiuS4O9MIjYzNGa6CFu96QoF381iK';
-                $licenseHash = 'spwXss1h5xIjYEh6BxiflIKaUwYpVXapo8stFQnu8p';
+                $apiUrl = Configure::get('Sitebuilder.api_credentials.url');
+                $apiUsername = Configure::get('Sitebuilder.api_credentials.username');
+                $apiPassword = Configure::get('Sitebuilder.api_credentials.password');
+                $licenseHash = Configure::get('Sitebuilder.api_credentials.license_hash');
             }
             $this->apiCredentials = (object) [
                 'apiUrl' => $apiUrl,
