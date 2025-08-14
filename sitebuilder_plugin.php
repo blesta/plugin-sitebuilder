@@ -544,7 +544,7 @@ class SitebuilderPlugin extends Plugin
             'Blesta',
             $this->sitebuilder_getCreateFromHash($service->id),
             $this->getCurrentLanguage(true),
-            $this->getVersion(),
+            $this->getVersion()
         );
         $panel->identifyProduct(
             $productData->name
