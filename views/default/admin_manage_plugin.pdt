@@ -1,14 +1,13 @@
 
         <?php
         $this->Widget->clear();
+        $this->Widget->setBodyWrapper(false);
         $this->Widget->create($this->_('SitebuilderManagePlugin.index.boxtitle_manage', true));
         $this->Form->create();
         ?>
-        <div class="inner">
-            <div class="pad">
-                <ul>
-                    <?php foreach ($pluginVars ?? [] as $id => $var): ?>
-                    <li>
+            <div class="card-body">
+                <?php foreach ($pluginVars ?? [] as $id => $var): ?>
+                    <div class="mb-3">
                         <?php
                             if (($var->type ?? '') == 'checkbox') {
                                 $this->Form->fieldCheckbox($id, 'true', (($values[$id] ?? 'false') == 'true'), ['id' => $id]);
@@ -30,10 +29,10 @@
                                 echo ' <small>'.$var->prompt.'</small>';
                             }
                         ?>
-                    </li>
-                    <?php endforeach; ?>
-                </ul>
-                <div class="empty_section" style="margin-top: 10px;">
+                    </div>
+                <?php endforeach; ?>
+
+                <div class="empty_section">
                     <div class="empty_box">
                         <?php
                             printf(
@@ -46,12 +45,11 @@
                 </div>
             </div>
 
-            <div class="button_row">
+            <div class="card-footer d-flex justify-content-end">
                 <?php
                 $this->Form->fieldSubmit('save_settings', $this->_('SitebuilderManagePlugin.index.submit_settings', true), ['class' => 'btn btn-primary pull-right']);
                 ?>
             </div>
-        </div>
         <?php
         $this->Form->end();
         $this->Widget->end();
