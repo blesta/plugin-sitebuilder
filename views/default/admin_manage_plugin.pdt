@@ -19,7 +19,7 @@
                                     $label .= ' ('.$this->_("SitebuilderManagePlugin.index.required", true).')';
                                     $fieldAttrs['required'] = 'required';
                                 }
-                                $this->Form->label($label, $id);
+                                $this->Form->label($label, $id, ['class' => 'form-label']);
                                 $this->Form->fieldText($id, ($values[$id] ?? ''), $fieldAttrs);
                             }
                             if ($var->prompt ?? '') {
