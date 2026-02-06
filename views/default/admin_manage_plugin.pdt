@@ -45,7 +45,8 @@
                 </div>
             </div>
 
-            <div class="card-footer d-flex justify-content-end">
+            <?php $this->Widget->footer(); ?>
+            <div class="d-flex justify-content-end">
                 <?php
                 $this->Form->fieldSubmit('save_settings', $this->_('SitebuilderManagePlugin.index.submit_settings', true), ['class' => 'btn btn-primary pull-right']);
                 ?>
